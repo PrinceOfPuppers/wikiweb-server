@@ -14,6 +14,8 @@ import (
 	//"golang.org/net/html/atom"
 	//"strings"
 	//log "github.com/llimllib/loglevel"
+	"github.com/PrinceOfPuppers/wikiweb/wikiweb"
+	"github.com/PrinceOfPuppers/wikiweb/wikiweb/data"
 )
 
 func getPage(link string) {
@@ -28,19 +30,19 @@ func getPage(link string) {
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 
 
-	links := getLinks(bodyBytes)
+	links := wikiweb.GetLinks(bodyBytes)
 
 
 
-	for i, link := range links.links {
-		fmt.Printf("%v: %v\n",i,link.url)
+	for i, link := range links.Links {
+		fmt.Printf("%v: %v\n",i,link.URL)
 	}
 }
 
 func main(){
 	//db := startDb()
 	//db.initalize()
-	//db.newUser("asdf")
+	//db.newUser("testing123")
 //
 	//rows,_ := db.db.Query("SELECT * FROM auth")
 	//defer rows.Close()
@@ -53,6 +55,7 @@ func main(){
 	//	println("test",userID,username,time)
 	//}
 	getPage("https://en.wikipedia.org/wiki/Philosophy")
+	db := data.StartDb()
 	//getPage("https://en.wikipedia.org/wiki/Electron")
 	//db.stopDb()
 }
