@@ -1,4 +1,4 @@
-package wikiweb
+package scraping
 
 import (
 	"bytes"

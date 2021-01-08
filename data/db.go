@@ -4,11 +4,16 @@ import (
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
 	log "github.com/sirupsen/logrus"
-	//"crypto/rand"
+	"crypto/sha1"
 	"time"
-	"github.com/PrinceOfPuppers/wikiweb/wikiweb/helpers"
+	"github.com/PrinceOfPuppers/wikiweb/helpers"
 
 )
+
+//GetUserScoreTable gets a unique, sql safe name for the user score table
+func GetUserScoreTable(username string) string {
+	return fmt.Sprintf("a%x",sha1.Sum([]byte(username)))
+}
 
 //DataBase is a wrapper object for an sql database
 type DataBase struct {
@@ -16,13 +21,12 @@ type DataBase struct {
 	// TODO add channel for sending queries
 
 	// common strings
-	userScoreTable string
 	weeklyScoreTable string
 }
 
 // StartDb opens the database and returns the database object
-func StartDb() *DataBase{
-	db, err := sql.Open("sqlite3","./test.db")
+func StartDb(path string) *DataBase{
+	db, err := sql.Open("sqlite3",path)
 	
 	if err != nil {
 		log.Fatal(err)
@@ -33,7 +37,7 @@ func StartDb() *DataBase{
 		log.Fatal(err)
 	}
 
-	dataBase := DataBase{ db:db, userScoreTable: "%v scores", weeklyScoreTable: "w%d scores" }
+	dataBase := DataBase{ db:db, weeklyScoreTable: "w%d scores" }
 	return &dataBase
 }
 
@@ -41,8 +45,6 @@ func StartDb() *DataBase{
 func (dataBase *DataBase) StopDb(){
 	dataBase.db.Close()
 }
-
-// TODO add runtime which clears queue
 
 
 func (dataBase *DataBase) tableExists(tableName string) bool{
@@ -118,9 +120,10 @@ func (dataBase *DataBase) NewUser(username string) (bool,string){
 	}
 
 	// create user score table
-	uScoreTable := fmt.Sprintf(dataBase.userScoreTable, username)
-	s = "CREATE TABLE $1(tableIndex INT PRIMARY KEY AUTO_INCREMENT, week INT, scoreIndex INT);"
-	_,err = dataBase.db.Exec(s,uScoreTable)
+	uScoreTable :=GetUserScoreTable(username)
+	s = fmt.Sprintf("CREATE TABLE %v(tableIndex IDENTITY(1,1) PRIMARY KEY, week INT, scoreIndex INT);",uScoreTable)
+
+	_,err = dataBase.db.Exec(s)
 	if err != nil {
 		log.Fatal("Failed to create user score table: ",err)
 		return false,""
@@ -135,17 +138,17 @@ func (dataBase *DataBase) AddScore(username string, week int, numLinks int, runT
 	wScoreTable := fmt.Sprintf(dataBase.weeklyScoreTable, week)
 
 	if !dataBase.tableExists(wScoreTable){
-		s := "CREATE TABLE $1(scoreIndex INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255), " +
-			 "numLinks INT, time INT, timeSubmitted INT);"
-		 _,err := dataBase.db.Exec(s,wScoreTable)
+		s :=fmt.Sprintf("CREATE TABLE %v(scoreIndex IDENTITY(1,1) PRIMARY KEY, username VARCHAR(255), " +
+			 "numLinks INT, time INT, timeSubmitted INT);",wScoreTable)
+		 _,err := dataBase.db.Exec(s)
 		 if err != nil {
 			 log.Fatal(err)
 		 }
 	}
 
-	s := "INSERT INTO $1(username, numLinks, time, timeSubmitted) VALUES($2, $3, $4, $5);"
+	s := fmt.Sprintf("INSERT INTO %v(username, numLinks, time, timeSubmitted) VALUES($2, $3, $4, $5);",wScoreTable)
 	uTime := int(time.Now().Unix())
-	res,err := dataBase.db.Exec(s,wScoreTable,username,numLinks,runTime,uTime)
+	res,err := dataBase.db.Exec(s,username,numLinks,runTime,uTime)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -156,9 +159,9 @@ func (dataBase *DataBase) AddScore(username string, week int, numLinks int, runT
 	}
 
 	// user score table
-	uScoreTable := fmt.Sprintf(dataBase.userScoreTable, username)
-	s = "INSERT INTO $1(week, scoreIndex) VALUES($2, $3);"
-	_,err = dataBase.db.Exec(s,uScoreTable,week,scoreIndex)
+	uScoreTable := GetUserScoreTable(username)
+	s = fmt.Sprintf("INSERT INTO %v(week, scoreIndex) VALUES($2, $3);",uScoreTable)
+	_,err = dataBase.db.Exec(s,week,scoreIndex)
 
 	if err != nil {
 		log.Fatal(err)
@@ -194,6 +197,7 @@ func (dataBase *DataBase) ValidateUser(username, userID string) bool {
 		log.Fatal(err)
 		return false
 	}
+	defer rows.Close()
 
 	var realUserID string
 
@@ -201,4 +205,49 @@ func (dataBase *DataBase) ValidateUser(username, userID string) bool {
 	rows.Scan(&realUserID)
 
 	return userID==realUserID
+}
+
+// GetTableContents is used for debugging and testing, it returns an array of all rows
+func (dataBase *DataBase) GetTableContents(tableName string) [][]string{
+
+	var tableRows [][]string
+	s := fmt.Sprintf("SELECT * FROM %v;",tableName)
+	rows,err := dataBase.db.Query(s)
+	if err != nil {
+		log.Fatal(err)
+		return tableRows
+	}
+	defer rows.Close()
+	
+	cols,_:=rows.Columns()
+
+
+
+    rowBytes := make([][]byte, len(cols))
+    
+
+	pointers := make([]interface{}, len(cols))
+	
+	for i := 0; i < len(rowBytes); i++ {
+        pointers[i] = &rowBytes[i]
+	}
+
+    for rows.Next() {
+        err = rows.Scan(pointers...)
+        if err != nil {
+            fmt.Println("Failed to scan row", err)
+		}
+		
+		rowStrings := make([]string, len(cols))
+        for i, b := range rowBytes {
+            if b == nil {
+                rowStrings[i] = "\\N"
+            } else {
+                rowStrings[i] = string(b)
+            }
+        }
+		tableRows = append(tableRows,rowStrings)
+    }
+
+	return tableRows
 }

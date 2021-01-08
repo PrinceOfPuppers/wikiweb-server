@@ -1,4 +1,5 @@
 notepad.go
-wikiweb/data/test.db
+data/test.db
+test/testing.db
 go.mod
 go.sum
